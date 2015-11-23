@@ -20,11 +20,12 @@
 #define tofindSub   "^sub\\(([^)]*)\\)[,]*$"
 #define tofindMul   "^mul\\(([^)]*)\\)[,]*$"
 #define tofindDiv   "^div\\(([^)]*)\\)[,]*$"
+#define tofindCollz   "^collz\\(([^)]*)\\)[,]*$"
 #define HISTORY_COUNT 20
 
 extern int errno;
 int totalForSum = 0;
-
+int count=0;
 typedef void(*sighandler_t)(int);
 static char *my_argv[100], *my_envp[100];
 static char *search_path[10];
@@ -142,6 +143,32 @@ void *getDiv(void *arg){
 	printf("%d\n", div);
 }
 
+
+void *collagz(void *arg) {
+	int *val = (int *)arg;
+	int n = val[0];
+	if(n==1) {
+		printf("(%d)\n",count);
+		return;
+	}
+	else if(n%2==0) {
+		count++;
+		n=n/2;
+		printf("%d,",n);
+		int *cnum = (int*)malloc((1)*sizeof(int));
+		cnum[0] = n;
+		collagz((void *)cnum);
+	} else {
+		count++;
+		n=3*n+1;
+		printf("%d,",n);
+		int *cnum = (int*)malloc((1)*sizeof(int));
+		cnum[0] = n;
+		collagz((void *)cnum);
+	}
+	count=0;
+}
+
 //Biggest Prime operation
 void *biggestPrime(void *params)
 {
@@ -238,7 +265,6 @@ void *lcm(void *params)
 
 int history(char *hist[],int current)
 {
-		
         int i = current;
         int hist_num = 1;
 
@@ -273,6 +299,7 @@ void parseCommand(char *command, char *hist[]) {
 		char* divStr = "div";
 		char* sqrtStr = "sqrt";
 		char* historyStr = "history";
+		char* colltzStr = "collz";
 		otherString = (char*)malloc(index);
 		memcpy(otherString, command, index);
 		otherString[index + 1] = 0;
@@ -329,7 +356,15 @@ void parseCommand(char *command, char *hist[]) {
 		else if (strcasecmp(otherString, sqrtStr) == 0) {
 			printf("\n sqrt is ... %s\n", otherString);
 		}
-		
+		else if (strcasecmp(otherString, colltzStr) == 0) {
+			int result = sumCollatzProcess(command);
+			if(result > 0) {
+			//Logic to trace the history.
+			hist[current] = strdup(command);
+			current = (current + 1) % HISTORY_COUNT;		
+			}
+			
+	}
 	}
 	if (strcasecmp(command, "sum") == 0) {
 		printf("Please enter proper parameters: sum(parameter1, parameter2....\n");
@@ -432,6 +467,92 @@ int sumchildProcess(char *line) {
 		wait(NULL);
 	}
 }
+
+/* Child process for sum:
+*  When fork() returns 0, we are in
+*  the child process.
+*/
+int sumCollatzProcess(char *line) {
+	int arr[7];
+	int ck=0;
+	int i = 0;
+	int numsLength = 0;
+	pthread_t thread1, thread2;
+	int  iret1, iret2;
+	regex_t re;
+	regmatch_t rm[2];
+	int retval = 0;
+	int pid = fork();
+	if (pid == -1) {
+		/* Error:
+		* When fork() returns -1, an error happened
+		* (for example, number of processes reached the limit).
+		*/
+		fprintf(stderr, "can't fork, error %d\n", errno);
+		exit(EXIT_FAILURE);
+	}
+	if (pid == 0) {
+
+		if (regcomp(&re, tofindCollz, REG_EXTENDED) != 0) {
+			fprintf(stderr, "Failed to compile regex '%s'\n", tofindCollz);
+			return EXIT_FAILURE;
+		}
+		
+		int *nums = (int*)malloc((8)*sizeof(int));
+		if ((retval = regexec(&re, line, 2, rm, 0)) == 0)
+		{
+			char *src = line + rm[1].rm_so;
+			char *end = line + rm[1].rm_eo;
+
+			while (src < end)
+			{
+				size_t len = strcspn(src, ",");
+				if (src + len > end)
+					len = end - src;
+				char *sqlAnswers = malloc(len);
+				sprintf(sqlAnswers, "%.*s", (int)len, src);
+				nums[totalForSum] = atoi(sqlAnswers);
+				//printf("String %d ", atoi(sqlAnswers));
+				src += len;
+				src += strspn(src, ",");
+				totalForSum++;
+			}
+		    numsLength = totalForSum;
+			for(ck=0;ck < numsLength;ck++) {
+			/* Create independent threads each of which will execute function */
+			int *cnum = (int*)malloc((1)*sizeof(int));
+			printf("[%d],",nums[ck]);
+			cnum[0] = nums[ck];
+			iret1 = pthread_create(&thread1, NULL, collagz, (void*)cnum);
+			if (iret1)
+			{
+				fprintf(stderr, "Error - pthread_create() return code: %d\n", iret1);
+				exit(EXIT_FAILURE);
+			}
+
+			/* Wait till threads are complete before main continues. Unless we  */
+			/* wait we run the risk of executing an exit which will terminate   */
+			/* the process and all threads before the threads have completed.   */
+			pthread_join(thread1, NULL);
+			}
+			exit(EXIT_SUCCESS);
+		}
+		else {
+			printf("Please enter proper parameters: sum(parameter1, parameter2....\n");
+			return 0;
+		}
+	}
+	else {
+		wait(NULL);
+	}
+}
+
+int length(const int* array) {
+  int count = 0;
+  while(array[count]) count++;
+  return count;
+}
+
 
 /* Child process for bprime:
 *  When fork() returns 0, we are in
