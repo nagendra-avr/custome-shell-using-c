@@ -23,6 +23,7 @@
 #define tofindCollz   "^collz\\(([^)]*)\\)[,]*$"
 #define HISTORY_COUNT 20
 
+pthread_mutex_t mutexsum;
 extern int errno;
 int totalForSum = 0;
 int count=0;
@@ -145,29 +146,38 @@ void *getDiv(void *arg){
 
 
 void *collagz(void *arg) {
-	int *val = (int *)arg;
-	int n = val[0];
-	if(n==1) {
-		printf("(%d)\n",count);
-		return;
-	}
-	else if(n%2==0) {
-		count++;
-		n=n/2;
-		printf("%d,",n);
-		int *cnum = (int*)malloc((1)*sizeof(int));
-		cnum[0] = n;
-		collagz((void *)cnum);
-	} else {
-		count++;
-		n=3*n+1;
-		printf("%d,",n);
-		int *cnum = (int*)malloc((1)*sizeof(int));
-		cnum[0] = n;
-		collagz((void *)cnum);
-	}
-	count=0;
+         int k; 
+         int  count=0;
+	    int *result;
+      result=malloc(3 * sizeof(*result)); 
+      int *val = (int *)arg;
+               int n = val[0];
+               result[count++]=n;
+               while(n!=1)
+               {
+               if(n%2==0)
+    {
+               n=n/2;
+               result[count++]=n;
+               }              
+               else
+               {
+               n=3*n+1;
+               result[count++]=n;
+               }
+  }
+               pthread_mutex_lock (&mutexsum);
+        printf("[%d],",result[0]);
+               for(k=1;k<count;k++)
+    {
+      
+      printf("%d,",result[k]);
+    }
+               printf("(%d)\n",count-1);
+               pthread_mutex_unlock (&mutexsum); 
+      
 }
+
 
 //Biggest Prime operation
 void *biggestPrime(void *params)
@@ -473,79 +483,89 @@ int sumchildProcess(char *line) {
 *  the child process.
 */
 int sumCollatzProcess(char *line) {
-	int arr[7];
-	int ck=0;
-	int i = 0;
-	int numsLength = 0;
-	pthread_t thread1, thread2;
-	int  iret1, iret2;
-	regex_t re;
-	regmatch_t rm[2];
-	int retval = 0;
-	int pid = fork();
-	if (pid == -1) {
-		/* Error:
-		* When fork() returns -1, an error happened
-		* (for example, number of processes reached the limit).
-		*/
-		fprintf(stderr, "can't fork, error %d\n", errno);
-		exit(EXIT_FAILURE);
-	}
-	if (pid == 0) {
+               int arr[7];
+               int ck=0,ck1=0;
+               int i = 0;
+               int numsLength = 0;
+               //pthread_t thread1, thread2;
+               int  iret1, iret2;
+               regex_t re;
+               regmatch_t rm[2];
+               int retval = 0;
+               int pid = fork();
+               if (pid == -1) {
+                              /* Error:
+                              * When fork() returns -1, an error happened
+                              * (for example, number of processes reached the limit).
+                              */
+                              fprintf(stderr, "can't fork, error %d\n", errno);
+                              exit(EXIT_FAILURE);
+               }
+               if (pid == 0) {
 
-		if (regcomp(&re, tofindCollz, REG_EXTENDED) != 0) {
-			fprintf(stderr, "Failed to compile regex '%s'\n", tofindCollz);
-			return EXIT_FAILURE;
-		}
-		
-		int *nums = (int*)malloc((8)*sizeof(int));
-		if ((retval = regexec(&re, line, 2, rm, 0)) == 0)
-		{
-			char *src = line + rm[1].rm_so;
-			char *end = line + rm[1].rm_eo;
+                              if (regcomp(&re, tofindCollz, REG_EXTENDED) != 0) {
+                                             fprintf(stderr, "Failed to compile regex '%s'\n", tofindCollz);
+                                             return EXIT_FAILURE;
+                              }
+                              
+                              int *nums = (int*)malloc((8)*sizeof(int));
+                              if ((retval = regexec(&re, line, 2, rm, 0)) == 0)
+                              {
+                                             char *src = line + rm[1].rm_so;
+                                             char *end = line + rm[1].rm_eo;
 
-			while (src < end)
-			{
-				size_t len = strcspn(src, ",");
-				if (src + len > end)
-					len = end - src;
-				char *sqlAnswers = malloc(len);
-				sprintf(sqlAnswers, "%.*s", (int)len, src);
-				nums[totalForSum] = atoi(sqlAnswers);
-				//printf("String %d ", atoi(sqlAnswers));
-				src += len;
-				src += strspn(src, ",");
-				totalForSum++;
-			}
-		    numsLength = totalForSum;
-			for(ck=0;ck < numsLength;ck++) {
-			/* Create independent threads each of which will execute function */
-			int *cnum = (int*)malloc((1)*sizeof(int));
-			printf("[%d],",nums[ck]);
-			cnum[0] = nums[ck];
-			iret1 = pthread_create(&thread1, NULL, collagz, (void*)cnum);
-			if (iret1)
-			{
-				fprintf(stderr, "Error - pthread_create() return code: %d\n", iret1);
-				exit(EXIT_FAILURE);
-			}
+                                             while (src < end)
+                                             {
+                                                            size_t len = strcspn(src, ",");
+                                                            if (src + len > end)
+                                                                           len = end - src;
+                                                            char *sqlAnswers = malloc(len);
+                                                            sprintf(sqlAnswers, "%.*s", (int)len, src);
+                                                            nums[totalForSum] = atoi(sqlAnswers);
+                                                            //printf("String %d ", atoi(sqlAnswers));
+                                                            src += len;
+                                                            src += strspn(src, ",");
+                                                            totalForSum++;
+                                             }
+                                  numsLength = totalForSum;
+                  
+                   pthread_t thread_id[numsLength];
+                 
+                                             for(ck=0;ck < numsLength;ck++) {
+                                             /* Create independent threads each of which will execute function */
+                                             int *cnum = (int*)malloc((1)*sizeof(int));
+                                             //printf("[%d],",nums[ck]);
+                                             cnum[0] = nums[ck];
+                                             iret1 = pthread_create(&thread_id[ck], NULL, collagz, (void*)cnum);
+											pthread_mutex_init(&mutexsum, NULL);
+                                             if (iret1)
+                                             {
+                                                            fprintf(stderr, "Error - pthread_create() return code: %d\n", iret1);
+                                                            exit(EXIT_FAILURE);
+                                             }
 
-			/* Wait till threads are complete before main continues. Unless we  */
-			/* wait we run the risk of executing an exit which will terminate   */
-			/* the process and all threads before the threads have completed.   */
-			pthread_join(thread1, NULL);
-			}
-			exit(EXIT_SUCCESS);
-		}
-		else {
-			printf("Please enter proper parameters: sum(parameter1, parameter2....\n");
-			return 0;
-		}
-	}
-	else {
-		wait(NULL);
-	}
+                                             /* Wait till threads are complete before main continues. Unless we  */
+                                             /* wait we run the risk of executing an exit which will terminate   */
+                                             /* the process and all threads before the threads have completed.   */
+                                    
+                                             }
+                                             for(ck1=0;ck1 < numsLength;ck1++) 
+                                             {
+								pthread_join(thread_id[ck1], NULL);
+							}
+							pthread_mutex_destroy(&mutexsum);
+                                             exit(EXIT_SUCCESS);
+                              }
+                              else {
+                                             printf("Please enter proper parameters: sum(parameter1, parameter2....\n");
+                                             return 0;
+                              }
+               }
+               else {
+                              wait(NULL);
+               }
 }
+
 
 int length(const int* array) {
   int count = 0;
@@ -974,4 +994,3 @@ int main(int argc, char *argv[], char *envp[])
 	printf("\n");
 	return 0;
 }
-
